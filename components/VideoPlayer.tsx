@@ -137,6 +137,14 @@ const VideoPlayer = () => {
           {/* Dialog content for the results */}
           <DialogContent className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
             <DialogTitle>Results</DialogTitle>
+            <DialogDescription>
+              {
+                fetchedQuestions.filter(
+                  (q) => q.attempted && q.correct === q.userAnswer
+                ).length
+              }{" "}
+              out of {fetchedQuestions.length} questions answered correctly
+            </DialogDescription>
             <div className="my-4 max-h-[400px] overflow-y-auto">
               {/* Display the results of each question */}
               {fetchedQuestions.map((question, qi) => {
