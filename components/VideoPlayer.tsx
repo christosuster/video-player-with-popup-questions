@@ -15,6 +15,7 @@ interface MCQQuestion {
   correct: string; // The correct answer
   time: number; // The time in seconds when the MCQ should appear
   attempted: boolean; // Whether the question has been answered yet
+  userAnswer: string; // The answer provided by the user
 }
 
 // Array of predefined questions
@@ -25,6 +26,7 @@ const questions: MCQQuestion[] = [
     options: ["Paris", "London", "Berlin"], // Answer options
     correct: "Paris", // Correct answer
     attempted: false, // Initially not attempted
+    userAnswer: "", // Initially no answer
   },
   {
     time: 10, // Show this question at 10 seconds into the video
@@ -32,6 +34,7 @@ const questions: MCQQuestion[] = [
     options: ["3", "4", "5"], // Answer options
     correct: "4", // Correct answer
     attempted: false, // Initially not attempted
+    userAnswer: "", // Initially no answer
   },
 ];
 
@@ -40,6 +43,8 @@ const VideoPlayer = () => {
   const [showMCQ, setShowMCQ] = useState<boolean>(false); // State to control visibility of the question popup
   const [videoPaused, setVideoPaused] = useState<boolean>(false); // State to track whether the video is paused
   const [userAnswer, setUserAnswer] = useState<string | null>(null); // State to store the user's answer result (correct/incorrect)
+  const [videoIsOver, setVideoIsOver] = useState<boolean>(false); // State to track whether the video has ended
+  const [showResults, setShowResults] = useState<boolean>(false); // State to control visibility of the results dialog
   const [fetchedQuestions, setFetchedQuestions] =
     useState<MCQQuestion[]>(questions); // State to hold the list of questions
   const [currentQuestion, setCurrentQuestion] = useState<MCQQuestion | null>(
@@ -49,10 +54,12 @@ const VideoPlayer = () => {
   // Function that runs whenever the video time updates
   const handleTimeUpdate = () => {
     if (videoRef.current) {
+      setVideoIsOver(false); // Reset the videoIsOver state when the video is playing
       const currentTime = videoRef.current.currentTime; // Get the current time of the video
+      const videoDuration = videoRef.current.duration; // Get the total duration of the video
 
       // Check if it's time to show a new MCQ (based on time and whether it's been answered)
-      const currentQuestion = fetchedQuestions.find(
+      const _currentQuestion = fetchedQuestions.find(
         (q) =>
           currentTime >= q.time && // Is the current time >= the time when the question should appear?
           currentTime < q.time + 1 && // Show the question within a 1-second window to avoid rapid firing
@@ -60,12 +67,18 @@ const VideoPlayer = () => {
           !showMCQ // Ensure a question is not already being shown
       );
 
-      if (currentQuestion) {
+      if (_currentQuestion) {
         // If a new question is found, set it to the state and show the popup
-        setCurrentQuestion(currentQuestion);
+        setCurrentQuestion(_currentQuestion);
         setShowMCQ(true); // Show the MCQ dialog
         videoRef.current.pause(); // Pause the video when the question appears
         setVideoPaused(true); // Mark the video as paused
+      }
+
+      if (currentTime >= videoDuration) {
+        // If the video has ended, set the videoIsOver state to true
+        setVideoIsOver(true);
+        // return;
       }
     }
   };
@@ -77,7 +90,13 @@ const VideoPlayer = () => {
       setFetchedQuestions(
         (prev) =>
           prev.map((q) =>
-            q === currentQuestion ? { ...q, attempted: true } : q
+            q === currentQuestion
+              ? {
+                  ...q,
+                  attempted: true,
+                  userAnswer: answer,
+                }
+              : q
           ) // Update the attempted flag
       );
     }
@@ -102,18 +121,88 @@ const VideoPlayer = () => {
         className="rounded-lg shadow-lg" // Apply some styling to the video
       />
 
+      {/* Display the results dialog when the video ends */}
+      {videoIsOver && (
+        <Dialog
+          open={videoIsOver} // Open the dialog if videoIsOver is true
+          onOpenChange={(state) => {
+            if (!state) {
+              // If the dialog is closed, reset the states
+              setVideoIsOver(false);
+              setShowResults(false);
+              setCurrentQuestion(null);
+            }
+          }}
+        >
+          {/* Dialog content for the results */}
+          <DialogContent className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
+            <DialogTitle>Results</DialogTitle>
+            <div className="my-4 max-h-[400px] overflow-y-auto">
+              {/* Display the results of each question */}
+              {fetchedQuestions.map((question, qi) => {
+                return (
+                  <div
+                    key={qi} // Unique key for each result
+                    className="border-y py-2"
+                  >
+                    <h1 className="font-semibold">{question.question}</h1>
+                    <div className="mt-2">
+                      {question.options.map((option, ai) => (
+                        <div
+                          key={option}
+                          className={`flex justify-between p-2 my-2 rounded-lg ${
+                            question.attempted
+                              ? question.correct === question.userAnswer
+                                ? question.correct === option
+                                  ? "bg-green-200"
+                                  : "bg-white"
+                                : question.correct === option
+                                ? "bg-green-200"
+                                : question.userAnswer === option
+                                ? "bg-red-200"
+                                : "bg-white"
+                              : question.correct === option
+                              ? "bg-green-200"
+                              : "bg-white"
+                          }`}
+                        >
+                          <p>
+                            {ai + 1}. {option}
+                          </p>
+                          {/* <p>
+                            {question.correct === option
+                              ? "Correct"
+                              : question.attempted && !question.isUserCorrect
+                              ? "Incorrect"
+                              : ""}
+                          </p> */}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Display the question popup if a question is being shown */}
       {showMCQ && currentQuestion && (
         <Dialog
           open={showMCQ} // Open the dialog if showMCQ is true
           onOpenChange={(state) => {
-            setShowMCQ(state); // Update the showMCQ state when dialog is closed or opened
             if (!state) {
+              if (!userAnswer) {
+                return; // If the dialog is closed without answering, do nothing
+              }
+
               // If the dialog is closed, resume the video and reset the states
               setVideoPaused(false);
               videoRef.current?.play(); // Play the video again
               setUserAnswer(null); // Reset the answer state
             }
+            setShowMCQ(state); // Update the showMCQ state when dialog is closed or opened
           }}
         >
           {/* Dialog content for the MCQ */}
@@ -124,6 +213,7 @@ const VideoPlayer = () => {
               {/* Render options as buttons */}
               {currentQuestion.options.map((option) => (
                 <button
+                  disabled={userAnswer !== null} // Disable the button if the user has already answered
                   key={option} // Unique key for each option
                   onClick={() => handleAnswer(option)} // Call handleAnswer when an option is clicked
                   className="block w-full p-3 my-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600"
@@ -132,12 +222,17 @@ const VideoPlayer = () => {
                 </button>
               ))}
             </DialogDescription>
-            {/* Show feedback based on the user's answer */}
-            {userAnswer === "incorrect" && (
-              <p className="text-red-500 mt-4">Incorrect, try again!</p>
-            )}
-            {userAnswer === "correct" && (
-              <p className="text-green-500 mt-4">That is correct!</p>
+            {/* Display the user's answer */}
+            {userAnswer && (
+              <p
+                className={`text-center text-lg font-semibold mt-4 ${
+                  userAnswer === "correct" ? "text-green-500" : "text-red-500"
+                }`}
+              >
+                {userAnswer === "correct"
+                  ? "Your answer is correct!"
+                  : "Your answer is incorrect!"}
+              </p>
             )}
           </DialogContent>
         </Dialog>
